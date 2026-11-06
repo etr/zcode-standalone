@@ -1,0 +1,13 @@
+{
+  "v3.17.2": {
+    "apps/zcode-cli/packages/adapters/src/auth/shared-credentials.ts": "d8cd4d712abd26b231b226369da98a11b9f957198e098c5949843123be157bc5",
+    "apps/zcode-cli/packages/adapters/src/model/anthropic-request-metadata.ts": "2d46fe27a3605cbca53ed2654de41dcdd6081005d846545970ad9e90cf4a8a1a",
+    "apps/zcode-cli/packages/adapters/src/model/official-coding-plan-gateway.ts": "aa8bc836a7f72dbe5fc9987affbee17ece9e5c4b09e6d5707e1d0228ccf630ab",
+    "apps/zcode-cli/packages/adapters/src/model/provider-endpoint-routing-fetch.ts": "c53c7a1cac12da3c3eb0d0880acc4df4929f1f4543bf30b4a7adb622ae0ac77d",
+    "apps/zcode-cli/packages/bootstrap/src/provider-endpoint-routing-source-headers.ts": "712961a29f930107a3982aee34a3aba786a277ea47fa2d36098d2ee618f6531a",
+    "packages/services/src/model-provider/zaiStartPlanBilling.ts": "5506ee83909b66de70db7a63dbb912ad0a719b9cd1265740037bad0967c1aded",
+    "packages/services/src/session/offPeakRuntimeModel.ts": "37717a026e4d15d84aa234fdc8b2e2e376da395ec99b333feb2741ff2f14541a",
+    "packages/services/src/session/offPeakServerClient.ts": "6e3fe192ef04589717fa66a08dcae40ffbdbdb40063f845229ae6aac965a6794",
+    "packages/shared/src/zcode-source-headers.ts": "d3f2b54260b089947ef219d2bebfba3a0ef1d98bab243990a6ae1b83f9e05cf5"
+  }
+}

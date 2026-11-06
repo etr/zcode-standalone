@@ -69,6 +69,9 @@ pnpm install --frozen-lockfile
 echo "==> Building engine bundle (tsc chain + esbuild + plugin runtimes + glm staging)"
 node scripts/build-desktop-agent-cli.mjs
 
+echo "==> Full glm staging (official plugins, bundled skills, npm runtime, sharp/koffi)"
+node packages/desktop/scripts/prepare-agent-node-bundle.mjs
+
 echo "==> Building TUI + workspace deps"
 pnpm --filter @zcode/contracts --filter @zcode/i18n --filter @zcode/shared run build
 pnpm --filter @zcode/tui run build
