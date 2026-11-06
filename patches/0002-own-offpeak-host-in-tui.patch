@@ -589,3 +589,17 @@ index f08019da..ad31f30c 100644
        react-dom: 19.2.7(react@19.2.7)
        react-grab: 0.2.0(react@19.2.7)
      optionalDependencies:
+diff --git a/apps/zcode-cli/packages/cli/scripts/build.mjs b/apps/zcode-cli/packages/cli/scripts/build.mjs
+index 7629763f..b9825209 100644
+--- a/apps/zcode-cli/packages/cli/scripts/build.mjs
++++ b/apps/zcode-cli/packages/cli/scripts/build.mjs
+@@ -12,7 +12,8 @@ const executableFileMode = 0o755;
+ const packageJsonFile = "package.json";
+ const rootPackageVersionError = "Root package.json must define a non-empty string version.";
+ const desktopAgentBuildFlag = "--desktop-agent";
+-export const resolveBuildExternal = () => ["@zcode/tui", "playwright-core", "koffi"];
++export // own: @zcode/services 以独立 ESM 产物随引擎分发（其 TS 源含 import.meta，CJS bundle 内不可用）。
++const resolveBuildExternal = () => ["@zcode/tui", "playwright-core", "koffi", "@zcode/services"];
+ 
+ export const readZodBuildVersion = async () => {
+   const sharedPackage = JSON.parse(

@@ -110,6 +110,9 @@ cp "$ROOT/tui-deploy/package.json" "$ENGINE/node_modules/@zcode/tui/package.json
 cp -R "$ROOT/tui-deploy/dist" "$ENGINE/node_modules/@zcode/tui/dist"
 chmod +x "$ENGINE/zcode.cjs"
 
+echo "==> Bundling @zcode/services as engine ESM module"
+node "$ROOT/build-services.mjs" "$SRC" "$ENGINE"
+
 # ---------------------------------------------------------------- 6. report
 ENGINE_TAG_VERSION=$(node "$ENGINE/zcode.cjs" --version 2>/dev/null || true)
 echo "==> Done."
