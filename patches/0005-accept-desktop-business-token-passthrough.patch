@@ -1,0 +1,41 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/auth/zai-business-token-cache.ts b/apps/zcode-cli/packages/adapters/src/auth/zai-business-token-cache.ts
+index cafe23fe..5c1b88a8 100644
+--- a/apps/zcode-cli/packages/adapters/src/auth/zai-business-token-cache.ts
++++ b/apps/zcode-cli/packages/adapters/src/auth/zai-business-token-cache.ts
+@@ -48,6 +48,19 @@ export class ZaiBusinessTokenCache {
+         Math.min(session.retryAt ?? session.value.refreshAt, session.value.expiresAt ?? Infinity)
+     )
+       return session.value;
++    // own（patch 0005）：桌面端把 z/login 返回的业务 token 直接落盘到 oauth:zai:access_token
++    // （见 services/oauth zaiProviderAdapter 的落盘契约注释），而 CLI 登录落盘的是原始 OAuth
++    // token。识别"已是业务 token"（无 iat 声明或非 JWT）时直接复用，跳过 z/login——否则业务
++    // token 被再次喂给 z/login 会得到 user information is invalid。
++    if (!looksLikeCliOauthToken(oauth)) {
++      const value = Object.freeze({
++        token: oauth,
++        refreshAt: Number.MAX_SAFE_INTEGER,
++        expiresAt: readJwtExpiry(oauth),
++      });
++      session.value = value;
++      return value;
++    }
+     const startedAt = Date.now();
+     const pending = Promise.resolve()
+       .then(() => {
+@@ -123,3 +136,16 @@ function readJwtExpiry(token: string): number | undefined {
+     return undefined;
+   }
+ }
++
++/** CLI OAuth token 是带 iat/exp 的三段 JWT；桌面业务 token（含 api_key 声明、无 iat）或
++ * 不透明串都不是。只有前者需要走 z/login 换业务 token。 */
++function looksLikeCliOauthToken(token: string): boolean {
++  const segments = token.split(".");
++  if (segments.length !== 3) return false;
++  try {
++    const claims: unknown = JSON.parse(Buffer.from(segments[1]!, "base64url").toString("utf8"));
++    return typeof claims === "object" && claims !== null && "iat" in claims;
++  } catch {
++    return false;
++  }
++}
