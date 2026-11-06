@@ -1,6 +1,14 @@
 --- a/apps/zcode-cli/packages/bootstrap/src/app/standalone-account-provider-runtime.ts
 +++ b/apps/zcode-cli/packages/bootstrap/src/app/standalone-account-provider-runtime.ts
-@@ -40,6 +40,7 @@
+@@ -1,4 +1,7 @@
+ import { createHash } from "node:crypto";
++import { readFile } from "node:fs/promises";
++import { homedir } from "node:os";
++import { join } from "node:path";
+ import {
+   createCodingPlanApiKeyResolver,
+   SHARED_ZCODE_CREDENTIAL_KEYS,
+@@ -40,6 +43,7 @@
    readonly zcodeBuiltinRevision: string;
    readonly providers: readonly StandaloneCodingPlanProvider[];
    readonly offPeakProviders: readonly { family: ProviderFamilyDomain; providerId: string }[];
@@ -8,7 +16,7 @@
  }> {
    if (config)
      return {
-@@ -55,6 +56,7 @@
+@@ -55,6 +59,7 @@
            : [];
        }),
        offPeakProviders: readStandaloneOffPeakProviders(config.providers),
@@ -16,7 +24,7 @@
      };
    const filePath = env[ZCODE_BUILTIN_PROVIDER_CONFIG_FILE_ENV]?.trim();
    if (!filePath) {
-@@ -72,6 +74,20 @@
+@@ -72,6 +77,20 @@
    }
  }
  
@@ -37,7 +45,7 @@
  /** off-peak 属派生权益（与桌面端 isCodingPlanDerivedMode 同源）：同族 Coding Plan 有权即有权。 */
  function readStandaloneOffPeakProviders(
    providers: ProviderConfigLayerSnapshot["providers"],
-@@ -136,7 +152,7 @@
+@@ -136,7 +155,7 @@
  }
  
  export async function readStandaloneAccountProviderConfigSnapshot(
@@ -46,7 +54,7 @@
    env: Readonly<Record<string, string | undefined>>,
    config?: Pick<ProviderConfigLayerSnapshot, "revision" | "providers">,
  ): Promise<AccountProviderConfigSnapshot> {
-@@ -210,12 +226,127 @@
+@@ -210,12 +229,143 @@
        }),
      ] as const;
    });
@@ -69,8 +77,8 @@
 +  }
 +  const merged = new ProviderConfigMap(entries);
    return createAccountProviderConfigSnapshot(catalog.zcodeBuiltinRevision, merged);
-+}
-+
+ }
+ 
 +interface StandaloneStartPlanState {
 +  readonly entitled: boolean;
 +  readonly modelIds: readonly string[];
@@ -114,12 +122,28 @@
 +  });
 +  // app_version 按真实引擎版本上报（诚实标识；后端可据此拒绝非桌面客户端 = fail-closed）。
 +  const appVersion = env.ZCODE_APP_VERSION?.trim() || "0.17.1";
++  // billing/balance 把 X-Device-Mid 当必填（与桌面 telemetry 管理的设备身份同源，只读复用）。
++  const dataBaseDir = env.ZCODE_DATA_BASE_DIR?.trim() || homedir();
++  let deviceMid: string | undefined;
++  try {
++    const raw = JSON.parse(
++      await readFile(join(dataBaseDir, ".zcode/v2/telemetry-state.json"), "utf8"),
++    ) as { deviceMid?: unknown };
++    if (typeof raw.deviceMid === "string" && raw.deviceMid.trim()) {
++      deviceMid = raw.deviceMid.trim();
++    }
++  } catch {
++    // 无设备身份时按缺参处理（服务端 3001 → fail-closed）。
++  }
 +  const url = `https://zcode.z.ai/api/v1/zcode-plan/billing/balance?app_version=${encodeURIComponent(appVersion)}`;
 +  const response = await httpClient.request(
 +    {
 +      url,
 +      method: "GET",
-+      headers: { Authorization: `Bearer ${jwt}` },
++      headers: {
++        Authorization: `Bearer ${jwt}`,
++        ...(deviceMid ? { "X-Device-Mid": deviceMid } : {}),
++      },
 +      maxResponseBytes: 128 * 1024,
 +      timeoutMs: 15_000,
 +    },
@@ -168,15 +192,15 @@
 +    }
 +  }
 +  return { entitled, modelIds };
- }
- 
++}
++
  export async function hasStandaloneCodingPlanAccess(
 -  credentialStore: Pick<SharedZCodeCredentialStore, "loadMany">,
 +  credentialStore: Pick<SharedZCodeCredentialStore, "load" | "loadMany">,
    env: Readonly<Record<string, string | undefined>>,
  ): Promise<boolean> {
    return (await readStandaloneAccountProviderConfigSnapshot(credentialStore, env)).providers
-@@ -267,6 +398,17 @@
+@@ -267,6 +417,17 @@
        input.abortSignal?.throwIfAborted();
        const providerId = input.providerId.trim();
        const access = input.accountAccess;
