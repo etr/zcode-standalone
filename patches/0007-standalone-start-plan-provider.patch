@@ -1,0 +1,196 @@
+--- a/apps/zcode-cli/packages/bootstrap/src/app/standalone-account-provider-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/standalone-account-provider-runtime.ts
+@@ -40,6 +40,7 @@
+   readonly zcodeBuiltinRevision: string;
+   readonly providers: readonly StandaloneCodingPlanProvider[];
+   readonly offPeakProviders: readonly { family: ProviderFamilyDomain; providerId: string }[];
++  readonly startPlanProviders: readonly { family: ProviderFamilyDomain; providerId: string }[];
+ }> {
+   if (config)
+     return {
+@@ -55,6 +56,7 @@
+           : [];
+       }),
+       offPeakProviders: readStandaloneOffPeakProviders(config.providers),
++      startPlanProviders: readStandaloneStartPlanProviders(config.providers),
+     };
+   const filePath = env[ZCODE_BUILTIN_PROVIDER_CONFIG_FILE_ENV]?.trim();
+   if (!filePath) {
+@@ -72,6 +74,20 @@
+   }
+ }
+ 
++/** own（patch 0007）：start-plan 权益按账号 balance 接口判定（桌面端同源语义），带 TTL 缓存。 */
++function readStandaloneStartPlanProviders(
++  providers: ProviderConfigLayerSnapshot["providers"],
++): readonly { family: ProviderFamilyDomain; providerId: string }[] {
++  return providers.entries().flatMap(([providerId, provider]) => {
++    const access = provider.access;
++    return access?.type === "zhipu-account" &&
++      access.mode === "start-plan" &&
++      access.accountType
++      ? [{ family: access.accountType, providerId }]
++      : [];
++  });
++}
++
+ /** off-peak 属派生权益（与桌面端 isCodingPlanDerivedMode 同源）：同族 Coding Plan 有权即有权。 */
+ function readStandaloneOffPeakProviders(
+   providers: ProviderConfigLayerSnapshot["providers"],
+@@ -136,7 +152,7 @@
+ }
+ 
+ export async function readStandaloneAccountProviderConfigSnapshot(
+-  credentialStore: Pick<SharedZCodeCredentialStore, "loadMany">,
++  credentialStore: Pick<SharedZCodeCredentialStore, "load" | "loadMany">,
+   env: Readonly<Record<string, string | undefined>>,
+   config?: Pick<ProviderConfigLayerSnapshot, "revision" | "providers">,
+ ): Promise<AccountProviderConfigSnapshot> {
+@@ -210,12 +226,127 @@
+       }),
+     ] as const;
+   });
+-  const merged = new ProviderConfigMap([...providers.entries(), ...offPeakEntries]);
++  const entries = [...providers.entries(), ...offPeakEntries];
++  // own（patch 0007）：start-plan Provider 按账号实际权益（billing/balance，Bearer zcodejwttoken）
++  // 进入 Registry；模型白名单取 balance capabilities（桌面端权威来源）。网关/接口拒绝时
++  // fail-closed（entitled=false），绝不重试绕过。ZCODE_OWN_STARTPLAN=1 显式开启。
++  if (env.ZCODE_OWN_STARTPLAN === "1" && catalog.startPlanProviders.length > 0) {
++    const state = await readStandaloneStartPlanState(env, credentialStore);
++    for (const { providerId } of catalog.startPlanProviders) {
++      entries.push([
++        providerId,
++        new ProviderConfig({
++          access: new ZhipuAccountAccessConfig({ entitled: state.entitled }),
++          ...(state.modelIds.length > 0 ? { builtinModelIds: state.modelIds } : {}),
++        }),
++      ] as const);
++    }
++  }
++  const merged = new ProviderConfigMap(entries);
+   return createAccountProviderConfigSnapshot(catalog.zcodeBuiltinRevision, merged);
++}
++
++interface StandaloneStartPlanState {
++  readonly entitled: boolean;
++  readonly modelIds: readonly string[];
++}
++
++const standaloneStartPlanCache = new Map<
++  string,
++  { expiresAt: number; state: StandaloneStartPlanState }
++>();
++const STANDALONE_START_PLAN_TTL_MS = 5 * 60_000;
++
++async function readStandaloneStartPlanState(
++  env: Readonly<Record<string, string | undefined>>,
++  credentialStore: Pick<SharedZCodeCredentialStore, "loadMany" | "load">,
++): Promise<StandaloneStartPlanState> {
++  const empty: StandaloneStartPlanState = { entitled: false, modelIds: [] };
++  const jwt = (await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zcodeJwtToken))?.trim();
++  if (!jwt) return empty;
++  const cacheKey = createHash("sha256").update(jwt).digest("hex");
++  const cached = standaloneStartPlanCache.get(cacheKey);
++  if (cached && cached.expiresAt > Date.now()) return cached.state;
++  const state = await fetchStandaloneStartPlanState(env, jwt).catch(() => empty);
++  standaloneStartPlanCache.set(cacheKey, {
++    expiresAt: Date.now() + STANDALONE_START_PLAN_TTL_MS,
++    state,
++  });
++  return state;
++}
++
++async function fetchStandaloneStartPlanState(
++  env: Readonly<Record<string, string | undefined>>,
++  jwt: string,
++): Promise<StandaloneStartPlanState> {
++  const config = createConfig({ env }).config;
++  const httpClient = createNodeHttpClientAdapter({
++    env,
++    proxyUrl: config.network.httpProxy,
++    noProxy: config.network.noProxy,
++    caCertFile: config.network.caCertFile,
++    timeoutMs: config.network.timeout,
++  });
++  // app_version 按真实引擎版本上报（诚实标识；后端可据此拒绝非桌面客户端 = fail-closed）。
++  const appVersion = env.ZCODE_APP_VERSION?.trim() || "0.17.1";
++  const url = `https://zcode.z.ai/api/v1/zcode-plan/billing/balance?app_version=${encodeURIComponent(appVersion)}`;
++  const response = await httpClient.request(
++    {
++      url,
++      method: "GET",
++      headers: { Authorization: `Bearer ${jwt}` },
++      maxResponseBytes: 128 * 1024,
++      timeoutMs: 15_000,
++    },
++    {},
++  );
++  if (response.status < 200 || response.status >= 300) {
++    return { entitled: false, modelIds: [] };
++  }
++  const payload = JSON.parse(new TextDecoder().decode(response.body)) as {
++    code?: unknown;
++    data?: {
++      plans?: Array<{ plan_id?: string; name?: string; status?: string; ends_at?: number }>;
++      balances?: Array<{ capabilities?: string[] }>;
++    };
++  };
++  if (payload.code != null && ![0, 200, "0", "200"].includes(payload.code as number)) {
++    return { entitled: false, modelIds: [] };
++  }
++  const nowSeconds = Date.now() / 1000;
++  const isStartPlanIdentity = (value?: string): boolean => {
++    const normalized = (value ?? "").trim().toLowerCase();
++    return normalized.includes("start-plan") || normalized.includes("start plan");
++  };
++  const plans = (payload.data?.plans ?? []).map((plan) => {
++    const status = plan.status?.trim().toLowerCase() ?? "";
++    const endsAt = Number(plan.ends_at);
++    const expired =
++      Number.isFinite(endsAt) && endsAt > 0 && endsAt <= nowSeconds ? "expired" : status;
++    return { planId: (plan.plan_id ?? "").trim().toLowerCase(), name: (plan.name ?? "").trim().toLowerCase(), status: expired };
++  });
++  const entitled = plans.some(
++    (plan) => plan.status === "active" && (isStartPlanIdentity(plan.planId) || isStartPlanIdentity(plan.name)),
++  );
++  const modelIds: string[] = [];
++  const seen = new Set<string>();
++  for (const balance of payload.data?.balances ?? []) {
++    for (const capability of balance.capabilities ?? []) {
++      const normalized = capability.trim();
++      if (!normalized.toLowerCase().startsWith("model:")) continue;
++      const modelId = normalized.slice("model:".length).trim();
++      const key = modelId.toLowerCase();
++      if (modelId && !seen.has(key)) {
++        seen.add(key);
++        modelIds.push(modelId);
++      }
++    }
++  }
++  return { entitled, modelIds };
+ }
+ 
+ export async function hasStandaloneCodingPlanAccess(
+-  credentialStore: Pick<SharedZCodeCredentialStore, "loadMany">,
++  credentialStore: Pick<SharedZCodeCredentialStore, "load" | "loadMany">,
+   env: Readonly<Record<string, string | undefined>>,
+ ): Promise<boolean> {
+   return (await readStandaloneAccountProviderConfigSnapshot(credentialStore, env)).providers
+@@ -267,6 +398,17 @@
+       input.abortSignal?.throwIfAborted();
+       const providerId = input.providerId.trim();
+       const access = input.accountAccess;
++      // own（patch 0007）：start-plan 请求鉴权与桌面端同式——直接 Bearer zcodejwttoken，
++      // 不经项目令牌解析（accountProviderRequestAuthService 的 start-plan 分支同语义）。
++      if (access?.mode === "start-plan") {
++        const jwt = (
++          await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zcodeJwtToken)
++        )?.trim();
++        if (!jwt) {
++          throw new Error(`Standalone Account Provider 缺少请求凭据 (start-plan): ${providerId}`);
++        }
++        return { headersApplied: true, requestAuth: { apiKey: jwt } };
++      }
+       if (!access || access.mode !== "individual-coding-plan") {
+         throw new Error(`Standalone Account Provider 请求身份无效: ${providerId}`);
+       }
