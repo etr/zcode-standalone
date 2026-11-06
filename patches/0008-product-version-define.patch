@@ -1,19 +1,37 @@
-diff --git a/apps/zcode-cli/packages/bootstrap/src/provider-endpoint-routing.ts b/apps/zcode-cli/packages/bootstrap/src/provider-endpoint-routing.ts
-index 78eee22c..6ef65ee6 100644
+--- a/apps/zcode-cli/packages/cli/scripts/build.mjs
++++ b/apps/zcode-cli/packages/cli/scripts/build.mjs
+@@ -163,6 +163,9 @@
+   }),
+ } = {}) => {
+   const cliVersion = await version;
++  // own（patch 0008）：把 monorepo 根版本（产品版本）作为编译期常量注入。
++  const productVersion = await readRootPackageVersion({ root: resolve(rootDirectory, "../..") });
++  console.log(`[own] product version define: ${productVersion}`);
+   const outfile = resolve(cliDirectory, "dist/zcode.cjs");
+   const sourcemapFile = `${outfile}.map`;
+ 
+@@ -179,6 +182,7 @@
+     bundle: true,
+     define: {
+       __CLI_VERSION__: JSON.stringify(cliVersion),
++      __OWN_PRODUCT_VERSION__: JSON.stringify(productVersion),
+     },
+     entryPoints: [resolve(cliDirectory, "src/main.ts")],
+     // Ink 7 and yoga-layout use top-level await, so the CJS CLI bundle loads the TUI
 --- a/apps/zcode-cli/packages/bootstrap/src/provider-endpoint-routing.ts
 +++ b/apps/zcode-cli/packages/bootstrap/src/provider-endpoint-routing.ts
-@@ -11,6 +11,10 @@ import type { Logger, LoggerFactory, ProviderEndpointRoutingPort } from "@zcode/
+@@ -11,6 +11,10 @@
  import type { ModelProviderSourceTitle } from "./model-config.js";
  import { createProviderEndpointRoutingSourceHeaders } from "./provider-endpoint-routing-source-headers.js";
  
-+// own（patch 0008）：本引擎自建自 monorepo tag；source headers 应申报产品版本（根 package.json），
-+// 而非 CLI 子包版本（0.x）。环境变量（桌面注入）仍优先生效（fingerprint 文件内 env ?? options）。
++// own（patch 0008）：本引擎自建自 monorepo tag；source headers 申报产品版本（根 package.json）。
++// 环境变量（桌面注入）仍优先生效（fingerprint 文件内 env ?? options）。
 +declare const __OWN_PRODUCT_VERSION__: string | undefined;
 +
  const processRoutingPorts = new Map<string, ProviderEndpointRoutingPort>();
  
  type NetworkConfig = ConfigResult["config"]["network"];
-@@ -48,7 +52,8 @@ export function resolveProcessProviderEndpointRoutingPort(
+@@ -48,7 +52,8 @@
    const credentialStore = createSharedZCodeCredentialStore({ env });
  
    const port = createProviderEndpointRoutingPort({
@@ -23,7 +41,7 @@ index 78eee22c..6ef65ee6 100644
      endpointOrigin,
      httpClient: createNodeHttpClientAdapter({
        caCertFile: options.network.caCertFile,
-@@ -62,7 +67,8 @@ export function resolveProcessProviderEndpointRoutingPort(
+@@ -62,7 +67,8 @@
      readZCodeJwt: () => credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zcodeJwtToken),
      sourceHeaders: () =>
        createProviderEndpointRoutingSourceHeaders({
@@ -33,7 +51,7 @@ index 78eee22c..6ef65ee6 100644
          env,
          sourceTitle: options.sourceTitle,
        }),
-@@ -87,7 +93,8 @@ export function createDefaultProviderEndpointRoutingPort(
+@@ -87,7 +93,8 @@
      module: "bootstrap.provider_endpoint_routing",
    });
    return resolveProcessProviderEndpointRoutingPort({
@@ -43,35 +61,3 @@ index 78eee22c..6ef65ee6 100644
      env,
      logger,
      network: configResult.config.network,
-diff --git a/apps/zcode-cli/packages/cli/scripts/build.mjs b/apps/zcode-cli/packages/cli/scripts/build.mjs
-index 7629763f..523d9cd2 100644
---- a/apps/zcode-cli/packages/cli/scripts/build.mjs
-+++ b/apps/zcode-cli/packages/cli/scripts/build.mjs
-@@ -12,7 +12,8 @@ const executableFileMode = 0o755;
- const packageJsonFile = "package.json";
- const rootPackageVersionError = "Root package.json must define a non-empty string version.";
- const desktopAgentBuildFlag = "--desktop-agent";
--export const resolveBuildExternal = () => ["@zcode/tui", "playwright-core", "koffi"];
-+export // own: @zcode/services 以独立 ESM 产物随引擎分发（其 TS 源含 import.meta，CJS bundle 内不可用）。
-+const resolveBuildExternal = () => ["@zcode/tui", "playwright-core", "koffi", "@zcode/services"];
- 
- export const readZodBuildVersion = async () => {
-   const sharedPackage = JSON.parse(
-@@ -162,6 +163,9 @@ export const buildCli = async ({
-   }),
- } = {}) => {
-   const cliVersion = await version;
-+  // own（patch 0008）：把 monorepo 根版本（产品版本，如 3.17.2）作为编译期常量注入。
-+  const productVersion = await readRootPackageVersion({ root: resolve(rootDirectory, "../..") });
-+  console.log(`[own] product version define: ${productVersion}`);
-   const outfile = resolve(cliDirectory, "dist/zcode.cjs");
-   const sourcemapFile = `${outfile}.map`;
- 
-@@ -178,6 +182,7 @@ export const buildCli = async ({
-     bundle: true,
-     define: {
-       __CLI_VERSION__: JSON.stringify(cliVersion),
-+      __OWN_PRODUCT_VERSION__: JSON.stringify(productVersion),
-     },
-     entryPoints: [resolve(cliDirectory, "src/main.ts")],
-     // Ink 7 and yoga-layout use top-level await, so the CJS CLI bundle loads the TUI
