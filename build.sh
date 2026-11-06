@@ -40,14 +40,15 @@ git clean -fdq   # remove untracked non-ignored files (previous patch artifacts)
 
 # ---------------------------------------------------------------- 2. patches
 if ls "$ROOT"/patches/*.patch >/dev/null 2>&1; then
+  # check+apply per patch: later patches may context-depend on earlier ones
+  # (e.g. 0007 builds on 0001's added lines), so each check must see the
+  # partially-patched tree.
   for p in "$ROOT"/patches/*.patch(N); do
     if ! git apply --check "$p"; then
       echo "PATCH CONFLICT: $(basename "$p") does not apply to $TAG."
       echo "Rebase the patch onto this tag (see README) and retry."
       exit 1
     fi
-  done
-  for p in "$ROOT"/patches/*.patch(N); do
     git apply "$p"
     echo "    applied $(basename "$p")"
   done
