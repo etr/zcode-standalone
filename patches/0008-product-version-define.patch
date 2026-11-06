@@ -61,3 +61,30 @@
      env,
      logger,
      network: configResult.config.network,
+--- a/apps/zcode-cli/packages/bootstrap/src/model-config.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/model-config.ts
+@@ -16,6 +16,10 @@
+ 
+ export type ModelProviderSourceTitle = "cli" | "electron";
+ 
++// own（patch 0008）：平台请求头申报产品版本（monorepo 根版本，build.mjs 编译期注入）。
++// 本引擎自建自对应 tag —— 产品版本比 CLI 子包版本（0.x）更准确；环境变量仍优先。
++declare const __OWN_PRODUCT_VERSION__: string | undefined;
++
+ interface RuntimeExecutionConfigOptions {
+   appVersion?: string;
+   endpointRoutingPort?: ProviderEndpointRoutingPort;
+@@ -72,7 +76,12 @@
+   env: EnvRecord,
+   options: Pick<RuntimeExecutionConfigOptions, "appVersion">,
+ ): string | undefined {
+-  return normalizePrintableHeaderValue(env[ZCODE_APP_VERSION_ENV] ?? options.appVersion);
++  return normalizePrintableHeaderValue(
++    env[ZCODE_APP_VERSION_ENV] ??
++      (typeof __OWN_PRODUCT_VERSION__ !== "undefined"
++        ? __OWN_PRODUCT_VERSION__
++        : options.appVersion),
++  );
+ }
+ 
+ function detectDefaultProviderSourceTitle(): ModelProviderSourceTitle {
