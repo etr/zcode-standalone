@@ -1,0 +1,34 @@
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/off-peak.ts b/apps/zcode-cli/packages/core/src/tool/handlers/off-peak.ts
+index 1c060db5..56649434 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/off-peak.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/off-peak.ts
+@@ -84,8 +84,12 @@ function throwOffPeakCreateFailure(
+ ): never {
+   const detail = (() => {
+     switch (outcome.errorCategory) {
+-      case "quota_3103":
+-        return "The idle-time task quota is used up for now. Tell the user the free quota is exhausted and they can retry later or review tasks in Automations.";
++      case "quota_3103": {
++        const resetMatch = /next_take_at=(\d+)/.exec(outcome.errorCode);
++        const resetAt = resetMatch ? new Date(Number(resetMatch[1])) : undefined;
++        const resetNote = resetAt ? ` The quota resets at ${resetAt.toLocaleString()}.` : "";
++        return `The idle-time task quota is used up for now. Tell the user the free quota is exhausted and they can retry later (use OffPeakList to review tasks).${resetNote}`;
++      }
+       case "eligibility_3101":
+         return "The current account has no eligible Coding Plan connection for idle-time tasks. Tell the user to select a ZAI/BigModel Coding Plan connection first.";
+       case "client_validation":
+diff --git a/packages/services/src/session/offPeakTaskService.ts b/packages/services/src/session/offPeakTaskService.ts
+index 5d9086b0..633e33a0 100644
+--- a/packages/services/src/session/offPeakTaskService.ts
++++ b/packages/services/src/session/offPeakTaskService.ts
+@@ -109,6 +109,10 @@ export function classifyOffPeakCreateFailure(
+     errorCategory = "local_persist";
+   } else if (error instanceof OffPeakServerError) {
+     errorCode = error.bizCode === undefined ? "" : String(error.bizCode);
++    // own: 保留服务端 next_take_at（3103 配额重置时间），供工具文案转述给用户。
++    if (error.nextTakeAt !== undefined) {
++      errorCode += `;next_take_at=${error.nextTakeAt}`;
++    }
+     if (error.bizCode === 3101) errorCategory = "eligibility_3101";
+     else if (error.bizCode === 3103) errorCategory = "quota_3103";
+   } else if (error instanceof ZodError) {
