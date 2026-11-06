@@ -1,0 +1,77 @@
+--- a/apps/zcode-cli/packages/bootstrap/src/auth-login.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/auth-login.ts
+@@ -37,7 +37,11 @@
+ import { createConfig } from "@zcode/adapters/config";
+ import { createNodeHttpClientAdapter } from "@zcode/adapters/http";
+ import type { EnvRecord } from "@zcode/adapters/model";
+-import { buildZCodeEndpointUrls, resolveRuntimeZCodeEndpointOrigin } from "@zcode/shared";
++import {
++  buildRuntimeZaiBusinessUrl,
++  buildZCodeEndpointUrls,
++  resolveRuntimeZCodeEndpointOrigin,
++} from "@zcode/shared";
+ import { setTimeout as delay } from "node:timers/promises";
+ import { createStandaloneAccountIdentityFromSecret } from "./app/standalone-account-provider-runtime.js";
+ import { throwIfAborted, waitWithAbort } from "./auth-login-abort.js";
+@@ -137,8 +141,23 @@
+           );
+     try {
+       if (providerId === "zai") {
++        // own（patch 0006）：对齐桌面端 zaiProviderAdapter 的落盘契约——原始 OAuth token
++        // 经 z/login 换成长效业务 token 后再落盘。转换失败回退原始 token，不阻塞登录
++        // （运行时两种形态都能消费，见 patch 0005 passthrough）。
++        let accessTokenToPersist = readyData.accessToken;
++        try {
++          const businessToken = await exchangeZaiBusinessToken({
++            accessToken: readyData.accessToken,
++            env,
++            httpClient: options.httpClient,
++            signal,
++          });
++          if (businessToken) accessTokenToPersist = businessToken;
++        } catch {
++          // 业务 token 兑换失败不阻塞登录；原始 token 仍可短期使用。
++        }
+         await credentialStore.saveZaiLoginCredentials({
+-          accessToken: readyData.accessToken,
++          accessToken: accessTokenToPersist,
+           jwtToken: readyData.token,
+           user: readyData.user,
+         });
+@@ -273,5 +292,36 @@
+       family: input.family,
+     },
+     { signal: input.signal },
++  );
++}
++
++/** own（patch 0006）：z/login 兑换业务 token；桌面端登录的同一转换步骤。 */
++async function exchangeZaiBusinessToken(input: {
++  accessToken: string;
++  env: EnvRecord;
++  httpClient?: Parameters<typeof createCodingPlanApiKeyResolver>[0]["httpClient"];
++  signal?: AbortSignal;
++}): Promise<string | undefined> {
++  input.signal?.throwIfAborted();
++  const httpClient = input.httpClient ?? createDefaultHttpClient(input.env);
++  const response = await httpClient.request(
++    {
++      url: buildRuntimeZaiBusinessUrl(input.env, "/api/auth/z/login"),
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: new TextEncoder().encode(JSON.stringify({ token: input.accessToken })),
++      maxResponseBytes: 64 * 1024,
++      timeoutMs: 30_000,
++    },
++    {},
+   );
++  if (response.status < 200 || response.status >= 300) return undefined;
++  const body = JSON.parse(new TextDecoder().decode(response.body)) as {
++    code?: unknown;
++    data?: { access_token?: string; accessToken?: string };
++  };
++  if (body.code != null && ![0, 200, "0", "200"].includes(body.code as number)) {
++    return undefined;
++  }
++  return body.data?.access_token?.trim() || body.data?.accessToken?.trim() || undefined;
+ }
