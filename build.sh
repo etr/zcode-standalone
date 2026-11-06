@@ -64,7 +64,12 @@ export ZCODE_ENV=production   # stage config/provider/zcode-builtin.json (prod r
 command -v pnpm >/dev/null 2>&1 || corepack enable
 
 echo "==> pnpm install (root workspace; vendor patches in patches/ are load-bearing)"
-pnpm install --frozen-lockfile
+if ls "$ROOT"/patches/*.patch(N) >/dev/null 2>&1; then
+  # Our patches may add workspace deps; their lockfile delta ships inside the patch.
+  pnpm install --no-frozen-lockfile
+else
+  pnpm install --frozen-lockfile
+fi
 
 echo "==> Building engine bundle (tsc chain + esbuild + plugin runtimes + glm staging)"
 node scripts/build-desktop-agent-cli.mjs
