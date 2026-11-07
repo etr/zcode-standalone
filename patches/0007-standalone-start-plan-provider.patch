@@ -73,10 +73,10 @@
 +  const entries = [...providers.entries(), ...offPeakEntries];
 +  // own（patch 0007）：start-plan Provider 按账号实际权益（billing/balance，Bearer zcodejwttoken）
 +  // 进入 Registry；模型白名单取 balance capabilities（桌面端权威来源）。接口拒绝时 fail-closed。
-+  // ZCODE_OWN_STARTPLAN=1 显式开启。家族门控：balance 探测只支持 zai 账号（bigmodel 走独立
++  // ZCODE_STANDALONE_STARTPLAN=1 显式开启。家族门控：balance 探测只支持 zai 账号（bigmodel 走独立
 +  // JWT 兑换，未实现），且必须有该族 OAuth 登录——绝不能把 bigmodel-start-plan 暴露成
 +  // entitled（zai 凭据打到 bigmodel 端点会被服务端风控拦截）。
-+  if (env.ZCODE_OWN_STARTPLAN === "1" && catalog.startPlanProviders.length > 0) {
++  if (env.ZCODE_STANDALONE_STARTPLAN === "1" && catalog.startPlanProviders.length > 0) {
 +    const zaiToken = (
 +      await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zaiAccessToken)
 +    )?.trim();

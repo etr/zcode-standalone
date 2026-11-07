@@ -7,7 +7,7 @@ index 33a0d056..ac9a0123 100644
    const credentialStore =
      options.credentialStore ?? createSharedZCodeCredentialStore({ env: options.env });
 +  // own（patch 0004）：共享登录被桌面端与 TUI 同时使用；此处登出会一并登出桌面端。
-+  if ((options.env ?? process.env).ZCODE_OWN_ALLOW_LOGIN !== "1" && options.credentialStore === undefined) {
++  if ((options.env ?? process.env).ZCODE_STANDALONE_ALLOW_LOGIN !== "1" && options.credentialStore === undefined) {
 +    const zaiToken = (await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zaiAccessToken))?.trim();
 +    const bigmodelToken = (
 +      await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.bigmodelAccessToken)
@@ -15,7 +15,7 @@ index 33a0d056..ac9a0123 100644
 +    if (zaiToken || bigmodelToken) {
 +      throw new Error(
 +        "This login is shared with the ZCode desktop app; logging out here would log out both. " +
-+          "Log out from the desktop app instead, or set ZCODE_OWN_ALLOW_LOGIN=1 to override.",
++          "Log out from the desktop app instead, or set ZCODE_STANDALONE_ALLOW_LOGIN=1 to override.",
 +      );
 +    }
 +  }
@@ -31,8 +31,8 @@ index 0a702f0a..77d9fe68 100644
      const pollToken = options.pollToken ?? createCliOAuthPollToken();
      const credentialStore = options.credentialStore ?? createSharedZCodeCredentialStore({ env });
 +    // own（patch 0004）：共享登录已存在时拒绝再次登录。Z.AI 对新授权敏感：CLI 侧新登录
-+    // 会使本机桌面端会话失效（实测）。重新登录请在桌面端进行；确需强制时设 ZCODE_OWN_ALLOW_LOGIN=1。
-+    if (env.ZCODE_OWN_ALLOW_LOGIN !== "1" && options.credentialStore === undefined) {
++    // 会使本机桌面端会话失效（实测）。重新登录请在桌面端进行；确需强制时设 ZCODE_STANDALONE_ALLOW_LOGIN=1。
++    if (env.ZCODE_STANDALONE_ALLOW_LOGIN !== "1" && options.credentialStore === undefined) {
 +      const tokenKey =
 +        providerId === "bigmodel"
 +          ? SHARED_ZCODE_CREDENTIAL_KEYS.bigmodelAccessToken
@@ -42,7 +42,7 @@ index 0a702f0a..77d9fe68 100644
 +        throw new Error(
 +          "A shared login already exists and is used by both the TUI and the ZCode desktop app. " +
 +            "Starting a new login here would invalidate that session. " +
-+            "Re-login from the desktop app instead, or set ZCODE_OWN_ALLOW_LOGIN=1 to override.",
++            "Re-login from the desktop app instead, or set ZCODE_STANDALONE_ALLOW_LOGIN=1 to override.",
 +        );
 +      }
 +    }

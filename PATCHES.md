@@ -15,7 +15,7 @@ for `/model`.
 
 ## 0002 — in-TUI off-peak host
 
-`cli/src/own-offpeak-host.ts` (new), `cli/src/tui-prompt-handler.ts`,
+`cli/src/standalone-offpeak-host.ts` (new), `cli/src/tui-prompt-handler.ts`,
 `cli/package.json`, `cli/scripts/build.mjs`, `pnpm-lock.yaml`
 Runs the vendor's own queue (`OffPeakTaskService`/`Repo`/`ServerClient` from
 `@zcode/services` — host-agnostic by construction) inside the TUI process:
@@ -23,7 +23,7 @@ Runs the vendor's own queue (`OffPeakTaskService`/`Repo`/`ServerClient` from
 dedicated session whose configured default model is the off-peak provider.
 Also externalizes `@zcode/services` from the CLI bundle (its TS source uses
 `import.meta`, unusable in the CJS bundle) — build-services.mjs ships it as an
-ESM module in the engine's node_modules. Gated: `ZCODE_OWN_OFFPEAK=1`.
+ESM module in the engine's node_modules. Gated: `ZCODE_STANDALONE_OFFPEAK=1`.
 Note: the off-peak tasks DB is shared with the desktop by upstream path
 resolution — co-claiming is safe by design (BEGIN IMMEDIATE + stale reclaim).
 
@@ -42,7 +42,7 @@ Now threaded through `errorCode` and rendered in the model-facing text
 already exists, because both surfaces share one credential store and a fresh
 login is at best pointless token churn (and was observed to disturb the other
 surface's session in the pre-0006 era; with 0006 the surfaces coexist).
-Override: `ZCODE_OWN_ALLOW_LOGIN=1`. The guard only fires on the production
+Override: `ZCODE_STANDALONE_ALLOW_LOGIN=1`. The guard only fires on the production
 path (injected stores in tests are exempt).
 
 ## 0005 — business-token passthrough
@@ -74,7 +74,7 @@ SHARED root; an isolated data root breaks this silently). Models from balance
 `capabilities`, normalized to official GLM ids. Request auth: Bearer JWT
 (desktop parity). **Family-gated to zai** after a bug where the bigmodel
 start-plan entry appeared entitled off zai credentials → deterministic
-server blocks. Fail-closed everywhere. Gated: `ZCODE_OWN_STARTPLAN=1`.
+server blocks. Fail-closed everywhere. Gated: `ZCODE_STANDALONE_STARTPLAN=1`.
 
 ## 0008 — report the product version
 

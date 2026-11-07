@@ -1,4 +1,4 @@
-# zcode-own
+# zcode-standalone
 
 > **Personal tooling, not affiliated with or endorsed by Z.ai.** This repo
 > distributes patches to the Apache-2.0 [zai-org/ZCode](https://github.com/zai-org/ZCode)
@@ -38,7 +38,7 @@ Rules:
 - Log in from **either surface** whenever nothing is logged in; both surfaces
   ride the shared business token. Neither needs to be kept running.
 - Never `/login` (or `zcode login`/`logout`) from the TUI while a login
-  exists — patch 0004's guards refuse it; `ZCODE_OWN_ALLOW_LOGIN=1` overrides
+  exists — patch 0004's guards refuse it; `ZCODE_STANDALONE_ALLOW_LOGIN=1` overrides
   for deliberate re-logins.
 - Also, an isolated data root silently breaks start-plan entitlement
   (patch 0007's balance probe needs `telemetry-state.json`'s deviceMid, which
@@ -83,7 +83,7 @@ node_modules/ (@zcode/tui closure + @zcode/services ESM bundle).
 
 ## Feature flags
 
-- `ZCODE_OWN_OFFPEAK=1` — in-TUI off-peak host (idle tasks; queue proven live,
+- `ZCODE_STANDALONE_OFFPEAK=1` — in-TUI off-peak host (idle tasks; queue proven live,
   full dispatch loop pending live verification)
-- `ZCODE_OWN_STARTPLAN=1` — start-plan models in `/model` (zai family only;
+- `ZCODE_STANDALONE_STARTPLAN=1` — start-plan models in `/model` (zai family only;
   balance-gated entitlement)

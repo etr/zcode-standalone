@@ -65,7 +65,7 @@ in `throwOffPeakCreateFailure`.
 `OffPeakTaskService` / `OffPeakTaskRepo` / `OffPeakServerClient`
 (`packages/services/src/session/`) have no Electron dependency; we run the
 full take-ticket → poll → claimDue → dispatch loop inside a terminal process
-(see `0002-own-offpeak-host-in-tui.patch`). If a first-party CLI host is on
+(see `0002-standalone-offpeak-host-in-tui.patch`). If a first-party CLI host is on
 the roadmap, most of the work is done.
 
 ---

@@ -14,7 +14,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SRC="$ROOT/src"
-ENGINE="${ZCODE_OWN_ENGINE:-$HOME/.zcode/local/engine}"
+ENGINE="${ZCODE_STANDALONE_ENGINE:-$HOME/.zcode/local/engine}"
 BASELINE="$ROOT/fingerprint-baseline.json"
 
 TAG_ARG="${1:-}"

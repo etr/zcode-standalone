@@ -16,14 +16,14 @@ index c477e25d..7032ac9a 100644
 -}
 +}
 \ No newline at end of file
-diff --git a/apps/zcode-cli/packages/cli/src/own-offpeak-host.ts b/apps/zcode-cli/packages/cli/src/own-offpeak-host.ts
+diff --git a/apps/zcode-cli/packages/cli/src/standalone-offpeak-host.ts b/apps/zcode-cli/packages/cli/src/standalone-offpeak-host.ts
 new file mode 100644
 index 00000000..0aaf171d
 --- /dev/null
-+++ b/apps/zcode-cli/packages/cli/src/own-offpeak-host.ts
++++ b/apps/zcode-cli/packages/cli/src/standalone-offpeak-host.ts
 @@ -0,0 +1,338 @@
 +/**
-+ * own-offpeak-host.ts — standalone off-peak host for the TUI (ZCODE_OWN_OFFPEAK=1).
++ * standalone-offpeak-host.ts — standalone off-peak host for the TUI (ZCODE_STANDALONE_OFFPEAK=1).
 + *
 + * 桌面端把 off-peak 队列放在 Electron host；这里把同一套 packages/services 队列
 + * （OffPeakTaskService/Repo/ServerClient，全部与 Electron 无关）跑在 TUI 进程内：
@@ -377,7 +377,7 @@ index 570b1259..bbbfb1c4 100644
    type TuiPromptHandler,
  } from "./tui-command-state.js";
  import { createTuiModelAvailabilityChecker } from "./tui-login-state.js";
-+import { createOwnOffPeakHost, type OwnOffPeakHost } from "./own-offpeak-host.js";
++import { createOwnOffPeakHost, type OwnOffPeakHost } from "./standalone-offpeak-host.js";
  import { withTuiMetadata } from "./tui-submit-metadata.js";
  import { DEFAULT_CLI_WORKFLOW_MODE, resolveWorkflowModeRuntimeConfig } from "./workflow-mode.js";
  import type {
@@ -385,7 +385,7 @@ index 570b1259..bbbfb1c4 100644
      readSubscriber: readRuntimeEventSubscriber,
    });
  
-+  // ── 独立 off-peak 宿主（ZCODE_OWN_OFFPEAK=1）───────────────────────────────
++  // ── 独立 off-peak 宿主（ZCODE_STANDALONE_OFFPEAK=1）───────────────────────────────
 +  // 队列/票据跑在本进程；派发用专用会话（不触碰交互会话），跑完即关。
 +  let ownOffPeakHost: OwnOffPeakHost | undefined;
 +  let ownOffPeakHostPromise: Promise<OwnOffPeakHost> | undefined;
@@ -452,7 +452,7 @@ index 570b1259..bbbfb1c4 100644
      const providerEndpointRoutingPort = processRuntime.providerEndpointRoutingPort;
      const browserRuntime = createCliHeadlessBrowserRuntime({ browserExecutable, browserUse }, deps);
 +    const ownOffPeak =
-+      (deps.env ?? process.env).ZCODE_OWN_OFFPEAK === "1" ? await ensureOwnOffPeakHost() : undefined;
++      (deps.env ?? process.env).ZCODE_STANDALONE_OFFPEAK === "1" ? await ensureOwnOffPeakHost() : undefined;
      let createdApp: Awaited<ReturnType<NonNullable<RunDependencies["createZCodeApp"]>>>;
      try {
        createdApp = await createAppFactory({
