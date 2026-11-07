@@ -1,0 +1,107 @@
+--- a/apps/zcode-cli/packages/bootstrap/src/app/standalone-account-provider-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/standalone-account-provider-runtime.ts
+@@ -133,6 +133,45 @@
+ export function standaloneAccountAuthSourceCredentialKey(providerId: string): string {
+   return `account-provider:${providerId}:auth-source`;
+ }
++
++/**
++ * own（patch 0009）：CLI/TUI 登录会写 identity 键，但桌面端登录只写 oauth:* 键——
++ * 没有 identity 键时独立 Registry 会判定“无权”（WSL 全新机器即此形态，/model 空）。
++ * 这里在读取侧兜底：identity 键缺失时，从共享登录的 user_info 推导同一账号的
++ * user_id 作为连接身份（桌面与 CLI 落盘的 user_info 均含 user_id）。
++ * 只读推导，不向凭据文件写入任何键（桌面拥有的状态不由 CLI 侧改写）。
++ */
++function readStandaloneUserIdentity(input: {
++  readonly family: ProviderFamilyDomain;
++  readonly storedIdentity?: string | null;
++  readonly userInfo?: string | null;
++}): string | undefined {
++  const stored = input.storedIdentity?.trim();
++  if (stored) return stored;
++  // own（patch 0009）：以下为“身份由共享 user_info 推导”路径。全程只读：
++  // 上游 port 会在 auth-source 缺失时回写 "oauth"，回写触发凭据变更监听 →
++  // Registry 刷新 → 在飞请求 scope_invalidated（并发 title 生成即触发）。
++  // 见 headers port 的 derivedLogin 守卫。
++  if (!input.userInfo) return undefined;
++  try {
++    const parsed = JSON.parse(input.userInfo) as { user_id?: unknown; id?: unknown };
++    const derived =
++      typeof parsed.user_id === "string" && parsed.user_id.trim()
++        ? parsed.user_id.trim()
++        : typeof parsed.id === "string" && parsed.id.trim()
++          ? parsed.id.trim()
++          : undefined;
++    return derived;
++  } catch {
++    return undefined;
++  }
++}
++
++function sharedUserInfoCredentialKey(family: ProviderFamilyDomain): string {
++  return family === "zai"
++    ? SHARED_ZCODE_CREDENTIAL_KEYS.zaiUserInfo
++    : SHARED_ZCODE_CREDENTIAL_KEYS.bigmodelUserInfo;
++}
+ function oauthCredentialKey(family: ProviderFamilyDomain): string {
+   return family === "zai"
+     ? SHARED_ZCODE_CREDENTIAL_KEYS.zaiAccessToken
+@@ -169,8 +208,16 @@
+     standaloneAccountIdentityCredentialKey(providerId),
+   );
+   const identities = await credentialStore.loadMany(identityKeys);
++  // own（patch 0009）：补读共享 user_info——桌面登录没有 CLI identity 键时的身份来源。
++  const userInfos = await credentialStore.loadMany(
++    configuredProviders.map(({ family }) => sharedUserInfoCredentialKey(family)),
++  );
+   const candidates = configuredProviders.flatMap(({ family, providerId }) => {
+-    const accountIdentity = identities[standaloneAccountIdentityCredentialKey(providerId)]?.trim();
++    const accountIdentity = readStandaloneUserIdentity({
++      family,
++      storedIdentity: identities[standaloneAccountIdentityCredentialKey(providerId)],
++      userInfo: userInfos[sharedUserInfoCredentialKey(family)],
++    });
+     if (!accountIdentity) return [];
+     const credentialKey = standaloneAccountProviderCredentialKey({
+       providerId,
+@@ -326,9 +373,18 @@
+       if (!access || access.mode !== "individual-coding-plan") {
+         throw new Error(`Standalone Account Provider 请求身份无效: ${providerId}`);
+       }
+-      const currentIdentity = (
+-        await credentialStore.load(standaloneAccountIdentityCredentialKey(providerId))
+-      )?.trim();
++      const familyKey: ProviderFamilyDomain =
++        access.accountType === "bigmodel" ? "bigmodel" : "zai";
++      const storedIdentityValue = await credentialStore.load(
++        standaloneAccountIdentityCredentialKey(providerId),
++      );
++      const currentIdentity = readStandaloneUserIdentity({
++        family: familyKey,
++        storedIdentity: storedIdentityValue,
++        userInfo: await credentialStore.load(sharedUserInfoCredentialKey(familyKey)),
++      });
++      // own（patch 0009）：identity 键缺失 = 桌面登录推导路径 → 跳过 auth-source 回写。
++      const derivedLogin = !storedIdentityValue?.trim();
+       if (!currentIdentity)
+         throw new Error(`Standalone Account Provider 凭据已经失效: ${providerId}`);
+       const family = access.accountType;
+@@ -355,10 +411,15 @@
+           (input.rejectedProjectTokenFingerprint && !input.expectedAccountScope)
+         )
+           throw new Error("project_token_scope_invalidated");
+-        if (source !== "oauth") await credentialStore.save(sourceKey, "oauth");
++        if (source !== "oauth" && !derivedLogin) await credentialStore.save(sourceKey, "oauth");
+         authSnapshots.set(oauthKey, oauth);
+-        authSnapshots.set(standaloneAccountIdentityCredentialKey(providerId), currentIdentity);
+-        authSnapshots.set(sourceKey, "oauth");
++        // own（patch 0009）：推导路径下文件里没有 identity/auth-source 键——不能为它们
++        // 建 snapshot，否则 invalidateChangedCredentials 每次都判定漂移 → resolver.clear
++        // → generation 递增 → 每回合首个请求 scope_invalidated。
++        if (!derivedLogin) {
++          authSnapshots.set(standaloneAccountIdentityCredentialKey(providerId), currentIdentity);
++          authSnapshots.set(sourceKey, "oauth");
++        }
+         const material = await resolver.resolveMaterial(
+           {
+             family,
