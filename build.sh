@@ -1,4 +1,5 @@
-#!/bin/zsh
+#!/usr/bin/env bash
+# Works under bash and zsh.
 # build.sh — build our own ZCode engine (unmodified upstream + our patch layer)
 # and assemble it at ~/.zcode/local/engine — fully outside the ZCode.app bundle,
 # so desktop app updates never touch it.
@@ -55,11 +56,15 @@ git reset --hard "$TAG"
 git clean -fdq   # remove untracked non-ignored files (previous patch artifacts)
 
 # ---------------------------------------------------------------- 2. patches
-if ls "$ROOT"/patches/*.patch >/dev/null 2>&1; then
+# null-glob semantics in both shells: an empty patches/ dir yields zero iterations
+if [ -n "${ZSH_VERSION:-}" ]; then setopt NULL_GLOB; fi
+if [ -n "${BASH_VERSION:-}" ]; then shopt -s nullglob; fi
+patch_files=("$ROOT"/patches/*.patch)
+if [ "${#patch_files[@]}" -gt 0 ]; then
   # check+apply per patch: later patches may context-depend on earlier ones
   # (e.g. 0007 builds on 0001's added lines), so each check must see the
   # partially-patched tree.
-  for p in "$ROOT"/patches/*.patch(N); do
+  for p in "${patch_files[@]}"; do
     if ! git apply --check "$p"; then
       echo "PATCH CONFLICT: $(basename "$p") does not apply to $TAG."
       echo "Rebase the patch onto this tag (see README) and retry."
@@ -71,6 +76,7 @@ if ls "$ROOT"/patches/*.patch >/dev/null 2>&1; then
 else
   echo "==> No patches — clean upstream build"
 fi
+if [ -n "${BASH_VERSION:-}" ]; then shopt -u nullglob; fi
 
 # ---------------------------------------------------------------- 3. compliance (pre-build)
 "$ROOT/verify-compliance.sh" "$SRC" "$TAG" "$BASELINE"
@@ -81,7 +87,7 @@ export ZCODE_ENV=production   # stage config/provider/zcode-builtin.json (prod r
 command -v pnpm >/dev/null 2>&1 || corepack enable
 
 echo "==> pnpm install (root workspace; vendor patches in patches/ are load-bearing)"
-if ls "$ROOT"/patches/*.patch(N) >/dev/null 2>&1; then
+if [ "${#patch_files[@]}" -gt 0 ]; then
   # Our patches may add workspace deps; their lockfile delta ships inside the patch.
   pnpm install --no-frozen-lockfile
 else

@@ -1,4 +1,5 @@
-#!/bin/zsh
+#!/usr/bin/env bash
+# Works under bash and zsh.
 # verify-compliance.sh — re-verify the compliance fingerprint at every build.
 #
 # Usage: verify-compliance.sh <src-dir> <tag> <baseline-json> [--update]
