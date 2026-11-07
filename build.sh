@@ -22,7 +22,23 @@ if [[ -n "$TAG_ARG" && "$TAG_ARG" != "--no-app-tag" ]]; then
 elif [[ "$TAG_ARG" == "--no-app-tag" && -n "${2:-}" ]]; then
   TAG="$2"
 else
-  APP_VER=$(defaults read /Applications/ZCode.app/Contents/Info.plist CFBundleShortVersionString)
+  # Default tag: match the installed app. macOS: Info.plist. Linux: version in
+  # the AppImage filename (ZCode-<ver>-linux-*.AppImage) under common paths.
+  APP_VER=""
+  if command -v defaults >/dev/null 2>&1 && [[ -d /Applications/ZCode.app ]]; then
+    APP_VER=$(defaults read /Applications/ZCode.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || true)
+  else
+    for candidate in "$HOME"/Applications/ZCode-*.AppImage "$HOME"/Downloads/ZCode-*.AppImage "$HOME"/ZCode-*.AppImage /opt/ZCode-*.AppImage /usr/local/bin/ZCode-*.AppImage; do
+      if [[ -f "$candidate" ]]; then
+        APP_VER=$(basename "$candidate" | sed -nE 's/^ZCode-([0-9]+\.[0-9]+\.[0-9]+)-linux-.*/\1/p')
+        [[ -n "$APP_VER" ]] && break
+      fi
+    done
+  fi
+  if [[ -z "$APP_VER" ]]; then
+    echo "Could not detect an installed ZCode version. Pass a tag explicitly: ./build.sh v3.17.2"
+    exit 1
+  fi
   TAG="v$APP_VER"
 fi
 echo "==> Building ZCode engine from tag: $TAG"

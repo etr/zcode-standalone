@@ -73,6 +73,36 @@ for f in missing:
 
 recorded = baseline.get(tag)
 if recorded is None:
+    # New tag: compare fingerprint files against the most recent previously
+    # recorded tag. Upstream changes to identity code between tags REQUIRE the
+    # same human review as intra-tag drift — never silently accept them.
+    def version_key(t):
+        try:
+            return tuple(int(x) for x in t.lstrip("v").split("."))
+        except ValueError:
+            return (0,)
+
+    prior_tags = [t for t in baseline if isinstance(baseline.get(t), dict) and baseline[t]]
+    ref_tag = max(prior_tags, key=version_key) if prior_tags else None
+    if ref_tag:
+        ref = baseline[ref_tag]
+        changed = {
+            f: (ref.get(f), h) for f, h in current.items() if ref.get(f) and ref.get(f) != h
+        }
+        if changed:
+            print(f"    NEW TAG {tag} changes fingerprint files vs {ref_tag}:")
+            for f, (old_h, new_h) in changed.items():
+                print(f"      {f}\n        {ref_tag}: {old_h}\n        {tag}:     {new_h}")
+            if update == "--update":
+                baseline[tag] = current
+                json.dump(baseline, open(baseline_path, "w"), indent=2, sort_keys=True)
+                print("    Baseline UPDATED after explicit human review (--update).")
+            else:
+                print(
+                    f"    Build stopped. Review the upstream diff of these files between {ref_tag} and {tag},"
+                    " then re-run with --update."
+                )
+                sys.exit(2)
     baseline[tag] = current
     json.dump(baseline, open(baseline_path, "w"), indent=2, sort_keys=True)
     print(f"    NEW TAG recorded ({len(current)} files). Subsequent builds will verify against it.")
