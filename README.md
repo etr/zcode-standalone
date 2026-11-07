@@ -35,7 +35,14 @@ the business token, so one login serves both).
 
 Rules:
 
-- Log in from **either surface** whenever nothing is logged in; both surfaces
+- Log in from **either surface** whenever convenient — `/login` is always
+  allowed and simply writes a fresh business token both surfaces ride.
+- A desktop-only login does not carry the terminal keys: the TUI shows your
+  models but the first turn asks you to `/login` once (clear error, one click,
+  desktop app unaffected).
+- An isolated data root silently breaks start-plan entitlement (patch 0007's
+  balance probe needs `telemetry-state.json`'s deviceMid, which lives in the
+  shared root) — keep the root shared.
   ride the shared business token. Neither needs to be kept running.
 - Never `/login` (or `zcode login`/`logout`) from the TUI while a login
   exists — patch 0004's guards refuse it; `ZCODE_STANDALONE_ALLOW_LOGIN=1` overrides
