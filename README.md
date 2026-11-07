@@ -43,13 +43,6 @@ Rules:
 - An isolated data root silently breaks start-plan entitlement (patch 0007's
   balance probe needs `telemetry-state.json`'s deviceMid, which lives in the
   shared root) — keep the root shared.
-  ride the shared business token. Neither needs to be kept running.
-- Never `/login` (or `zcode login`/`logout`) from the TUI while a login
-  exists — patch 0004's guards refuse it; `ZCODE_STANDALONE_ALLOW_LOGIN=1` overrides
-  for deliberate re-logins.
-- Also, an isolated data root silently breaks start-plan entitlement
-  (patch 0007's balance probe needs `telemetry-state.json`'s deviceMid, which
-  lives in the shared root) — another reason to keep the root shared.
 
 Wrapper (`~/.local/bin/zcode-tui`) is exactly:
 
