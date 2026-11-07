@@ -23,7 +23,7 @@ Runs the vendor's own queue (`OffPeakTaskService`/`Repo`/`ServerClient` from
 dedicated session whose configured default model is the off-peak provider.
 Also externalizes `@zcode/services` from the CLI bundle (its TS source uses
 `import.meta`, unusable in the CJS bundle) — build-services.mjs ships it as an
-ESM module in the engine's node_modules. Gated: `ZCODE_STANDALONE_OFFPEAK=1`.
+ESM module in the engine's node_modules. Always on.
 Note: the off-peak tasks DB is shared with the desktop by upstream path
 resolution — co-claiming is safe by design (BEGIN IMMEDIATE + stale reclaim).
 
@@ -64,7 +64,7 @@ SHARED root; an isolated data root breaks this silently). Models from balance
 `capabilities`, normalized to official GLM ids. Request auth: Bearer JWT
 (desktop parity). **Family-gated to zai** after a bug where the bigmodel
 start-plan entry appeared entitled off zai credentials → deterministic
-server blocks. Fail-closed everywhere. Gated: `ZCODE_STANDALONE_STARTPLAN=1`.
+server blocks. Fail-closed everywhere. Always on.
 
 ## 0008 — report the product version
 

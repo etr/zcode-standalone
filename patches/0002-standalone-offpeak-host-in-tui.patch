@@ -23,7 +23,7 @@ index 00000000..0aaf171d
 +++ b/apps/zcode-cli/packages/cli/src/standalone-offpeak-host.ts
 @@ -0,0 +1,338 @@
 +/**
-+ * standalone-offpeak-host.ts — standalone off-peak host for the TUI (ZCODE_STANDALONE_OFFPEAK=1).
++ * standalone-offpeak-host.ts — standalone off-peak host for the TUI (always on).
 + *
 + * 桌面端把 off-peak 队列放在 Electron host；这里把同一套 packages/services 队列
 + * （OffPeakTaskService/Repo/ServerClient，全部与 Electron 无关）跑在 TUI 进程内：
@@ -385,7 +385,7 @@ index 570b1259..bbbfb1c4 100644
      readSubscriber: readRuntimeEventSubscriber,
    });
  
-+  // ── 独立 off-peak 宿主（ZCODE_STANDALONE_OFFPEAK=1）───────────────────────────────
++  // ── 独立 off-peak 宿主（always on）──────────────────────────────────────────────
 +  // 队列/票据跑在本进程；派发用专用会话（不触碰交互会话），跑完即关。
 +  let ownOffPeakHost: OwnOffPeakHost | undefined;
 +  let ownOffPeakHostPromise: Promise<OwnOffPeakHost> | undefined;
@@ -452,7 +452,7 @@ index 570b1259..bbbfb1c4 100644
      const providerEndpointRoutingPort = processRuntime.providerEndpointRoutingPort;
      const browserRuntime = createCliHeadlessBrowserRuntime({ browserExecutable, browserUse }, deps);
 +    const ownOffPeak =
-+      (deps.env ?? process.env).ZCODE_STANDALONE_OFFPEAK === "1" ? await ensureOwnOffPeakHost() : undefined;
++      await ensureOwnOffPeakHost();
      let createdApp: Awaited<ReturnType<NonNullable<RunDependencies["createZCodeApp"]>>>;
      try {
        createdApp = await createAppFactory({
