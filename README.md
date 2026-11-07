@@ -83,7 +83,9 @@ node_modules/ (@zcode/tui closure + @zcode/services ESM bundle).
 
 ## Feature flags
 
-- `ZCODE_STANDALONE_OFFPEAK=1` — in-TUI off-peak host (idle tasks; queue proven live,
-  full dispatch loop pending live verification)
-- `ZCODE_STANDALONE_STARTPLAN=1` — start-plan models in `/model` (zai family only;
-  balance-gated entitlement)
+- Start-plan models in `/model`: **on by default** (verified, fail-closed —
+  no active start-plan on the account simply shows nothing). Opt out with
+  `ZCODE_STANDALONE_STARTPLAN=0`.
+- `ZCODE_STANDALONE_OFFPEAK=1` — in-TUI off-peak host (idle tasks; opt-in
+  until the full dispatch loop passes its first live verification, then it
+  will be defaulted on the same way).

@@ -65,7 +65,7 @@
    env: Readonly<Record<string, string | undefined>>,
    config?: Pick<ProviderConfigLayerSnapshot, "revision" | "providers">,
  ): Promise<AccountProviderConfigSnapshot> {
-@@ -210,12 +233,34 @@
+@@ -210,12 +233,35 @@
        }),
      ] as const;
    });
@@ -76,7 +76,8 @@
 +  // ZCODE_STANDALONE_STARTPLAN=1 显式开启。家族门控：balance 探测只支持 zai 账号（bigmodel 走独立
 +  // JWT 兑换，未实现），且必须有该族 OAuth 登录——绝不能把 bigmodel-start-plan 暴露成
 +  // entitled（zai 凭据打到 bigmodel 端点会被服务端风控拦截）。
-+  if (env.ZCODE_STANDALONE_STARTPLAN === "1" && catalog.startPlanProviders.length > 0) {
++  // own（patch 0007）：默认开启（已验证、全链路 fail-closed）；ZCODE_STANDALONE_STARTPLAN=0 关闭。
++  if (env.ZCODE_STANDALONE_STARTPLAN !== "0" && catalog.startPlanProviders.length > 0) {
 +    const zaiToken = (
 +      await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zaiAccessToken)
 +    )?.trim();
@@ -102,7 +103,7 @@
    env: Readonly<Record<string, string | undefined>>,
  ): Promise<boolean> {
    return (await readStandaloneAccountProviderConfigSnapshot(credentialStore, env)).providers
-@@ -267,6 +312,17 @@
+@@ -267,6 +313,17 @@
        input.abortSignal?.throwIfAborted();
        const providerId = input.providerId.trim();
        const access = input.accountAccess;
@@ -120,13 +121,10 @@
        if (!access || access.mode !== "individual-coding-plan") {
          throw new Error(`Standalone Account Provider 请求身份无效: ${providerId}`);
        }
-@@ -355,6 +411,130 @@
-           ...(accountScope ? { accountScope } : {}),
-         },
-       };
-+    },
-+  };
-+}
+@@ -358,3 +415,127 @@
+     },
+   };
+ }
 +
 +interface StandaloneStartPlanState {
 +  readonly entitled: boolean;
@@ -196,7 +194,7 @@
 +      },
 +      maxResponseBytes: 128 * 1024,
 +      timeoutMs: 15_000,
-     },
++    },
 +    {},
 +  );
 +  if (response.status < 200 || response.status >= 300) {
@@ -208,7 +206,7 @@
 +      plans?: Array<{ plan_id?: string; name?: string; status?: string; ends_at?: number }>;
 +      balances?: Array<{ capabilities?: string[] }>;
 +    };
-   };
++  };
 +  if (payload.code != null && ![0, 200, "0", "200"].includes(payload.code as number)) {
 +    return { entitled: false, modelIds: [] };
 +  }
@@ -248,6 +246,6 @@
 +    }
 +  }
 +  return { entitled, modelIds };
- }
++}
 +
 +/** own（patch 0007 headers）：start-plan 请求鉴权与桌面端同式——直接 Bearer zcodejwttoken。 */
