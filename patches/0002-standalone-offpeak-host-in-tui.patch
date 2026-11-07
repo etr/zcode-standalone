@@ -273,7 +273,7 @@ index 00000000..0aaf171d
 +              ...(input.thoughtLevel ? { options: { reasoningLevel: input.thoughtLevel } } : {}),
 +            },
 +            workspacePath: options.workingDirectory,
-+            hostId: "zcode-own-tui",
++            hostId: "zcode-standalone-tui",
 +          });
 +          if (!result.ok) {
 +            return {
