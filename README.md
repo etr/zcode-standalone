@@ -10,8 +10,37 @@ Replaces the desktop app as the primary entrypoint.
 - `verify-compliance.sh` — refuses to build if patches touch client-identity files;
   detects upstream drift in those files (human review via `--update`)
 - `fingerprint-baseline.json` — per-tag sha256 of identity/fingerprint files
+- `docs/upstream-feedback.md` — engineering findings offered to the ZCode team
 - `src/` — the ZCode clone (gitignored)
 - `tui-deploy/` — self-contained @zcode/tui node_modules closure (gitignored)
+
+## Login architecture (IMPORTANT — do not isolate the data root)
+
+The TUI and the desktop app **share one login store** (the default
+`~/.zcode/v2/credentials.json`). Do NOT set `ZCODE_DATA_BASE_DIR` on the
+TUI wrapper — an isolated root was an early design that was abandoned after
+the real interop root cause was found (the desktop persists a *business*
+token in `oauth:zai:access_token` while stock CLI logins persist a raw
+1-hour OAuth token; patches 0005/0006 make both surfaces produce and consume
+the business token, so one login serves both).
+
+Rules:
+
+- Log in from **either surface** whenever nothing is logged in; both surfaces
+  ride the shared business token. Neither needs to be kept running.
+- Never `/login` (or `zcode login`/`logout`) from the TUI while a login
+  exists — patch 0004's guards refuse it; `ZCODE_OWN_ALLOW_LOGIN=1` overrides
+  for deliberate re-logins.
+- Also, an isolated data root silently breaks start-plan entitlement
+  (patch 0007's balance probe needs `telemetry-state.json`'s deviceMid, which
+  lives in the shared root) — another reason to keep the root shared.
+
+Wrapper (`~/.local/bin/zcode-tui`) is exactly:
+
+```zsh
+#!/bin/zsh
+exec node "$HOME/.zcode/local/engine/zcode.cjs" tui "$@"
+```
 
 ## Compliance contract
 
@@ -21,10 +50,16 @@ official OAuth credentials, the vendor's endpoint routing. Any feature gated
 server-side (off-peak tickets, start-plan entitlement) is *requested honestly*
 and accepted as unavailable if refused.
 
+Deliberate exception (user-approved): the engine reports the **product
+version** of the tag it was built from (`__OWN_PRODUCT_VERSION__`, patch 0008)
+rather than the CLI subpackage version — both are true of the build; endpoints
+that version-gate accept product versions only.
+
 ## Version bumps
 
 1. `./build.sh` (defaults to the installed app's tag — but our engine does NOT
-   need to match the app; any tag works since the TUI runs standalone)
+   need to match the app; any tag works since the TUI runs standalone). The
+   baked product version tracks the tag automatically.
 2. If a patch conflicts: rebase it on the new tag, verify it still does what it
    says, commit, rebuild.
 3. If compliance fails with UPSTREAM DRIFT: review the upstream diff of the
@@ -35,6 +70,11 @@ and accepted as unavailable if refused.
 
 zcode.cjs, provider/zcode-builtin.json (adjacent, so no env-var workaround),
 packages/* (official plugins + bundled skills), node-runtime/ (npm shim),
-node_modules/ (@zcode/tui closure). Launched via `~/.local/bin/zcode-tui`
-which also sets ZCODE_DATA_BASE_DIR=~/.zcode/tui for login isolation from
-the desktop app.
+node_modules/ (@zcode/tui closure + @zcode/services ESM bundle).
+
+## Feature flags
+
+- `ZCODE_OWN_OFFPEAK=1` — in-TUI off-peak host (idle tasks; queue proven live,
+  full dispatch loop pending live verification)
+- `ZCODE_OWN_STARTPLAN=1` — start-plan models in `/model` (zai family only;
+  balance-gated entitlement)
