@@ -35,16 +35,6 @@ resolution — co-claiming is safe by design (BEGIN IMMEDIATE + stale reclaim).
 Now threaded through `errorCode` and rendered in the model-facing text
 ("quota resets at …"). Pure UX; no behavior change.
 
-## 0004 — login/logout guards for the shared session
-
-`bootstrap/src/auth-login.ts`, `bootstrap/src/auth-login-persistence.ts`
-`zcode login`/`logout` (incl. TUI `/login`, `/logout`) refuse when a login
-already exists, because both surfaces share one credential store and a fresh
-login is at best pointless token churn (and was observed to disturb the other
-surface's session in the pre-0006 era; with 0006 the surfaces coexist).
-Override: `ZCODE_STANDALONE_ALLOW_LOGIN=1`. The guard only fires on the production
-path (injected stores in tests are exempt).
-
 ## 0005 — business-token passthrough
 
 `adapters/src/auth/zai-business-token-cache.ts`
@@ -90,3 +80,18 @@ declared version flip block/pass). Env var still wins for desktop-hosted
 children. This is the one deliberate deviation from "patch nothing
 identity-adjacent" — the policy change lives in the header *callers*; the
 fingerprint files themselves remain untouched.
+
+## 0009 — desktop-login visibility + one-time terminal provisioning
+
+`bootstrap/src/app/standalone-account-provider-runtime.ts`
+Registry entitlement falls back to the shared desktop `user_info` when the
+CLI identity keys are absent, so a desktop-only machine sees its models
+immediately. Request time derives nothing: missing terminal keys produce a
+clear "run /login once in this TUI" error; that login writes the keys
+alongside the shared business token (desktop unaffected). This replaced an
+earlier request-time identity-derivation design that fought the upstream
+scope/fingerprint guards on every turn.
+
+(Numbering note: 0004 — the login guard — was removed. It blocked exactly
+this bootstrap flow, and with 0006-era business tokens a re-login is
+harmless.)
