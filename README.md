@@ -1,5 +1,14 @@
 # zcode-own
 
+> **Personal tooling, not affiliated with or endorsed by Z.ai.** This repo
+> distributes patches to the Apache-2.0 [zai-org/ZCode](https://github.com/zai-org/ZCode)
+> source and builds a self-hosted engine for personal use. It authenticates
+> with the user's own official credentials, self-identifies honestly
+> (`sourceTitle: cli`, real device id), and treats every server-side gate
+> (quotas, eligibility, version checks) as authoritative — refusals are
+> surfaced, never bypassed. Users are responsible for complying with the
+> vendor's terms. No Z.ai source code is contained here; only patches.
+
 Our own build of the ZCode engine + TUI, living outside the ZCode.app bundle.
 Replaces the desktop app as the primary entrypoint.
 
