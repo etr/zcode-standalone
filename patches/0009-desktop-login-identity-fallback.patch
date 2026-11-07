@@ -1,107 +1,282 @@
 --- a/apps/zcode-cli/packages/bootstrap/src/app/standalone-account-provider-runtime.ts
 +++ b/apps/zcode-cli/packages/bootstrap/src/app/standalone-account-provider-runtime.ts
-@@ -133,6 +133,45 @@
- export function standaloneAccountAuthSourceCredentialKey(providerId: string): string {
-   return `account-provider:${providerId}:auth-source`;
+@@ -1,7 +1,4 @@
+ import { createHash } from "node:crypto";
+-import { readFile } from "node:fs/promises";
+-import { homedir } from "node:os";
+-import { join } from "node:path";
+ import {
+   createCodingPlanApiKeyResolver,
+   SHARED_ZCODE_CREDENTIAL_KEYS,
+@@ -22,10 +19,6 @@
+   NodeZCodeBuiltinProviderConfigSource,
+   ZCODE_BUILTIN_PROVIDER_CONFIG_FILE_ENV,
+ } from "@zcode/provider-node";
+-import { normalizeOfficialGlmModelId } from "@zcode/shared";
+-
+-// own（patch 0008 配套）：产品版本编译期常量（build.mjs 注入；tsc 下为未定义安全访问）。
+-declare const __OWN_PRODUCT_VERSION__: string | undefined;
+ import type { ProviderFamilyDomain } from "@zcode/shared";
+ 
+ export interface StandaloneCodingPlanProvider {
+@@ -46,8 +39,6 @@
+ ): Promise<{
+   readonly zcodeBuiltinRevision: string;
+   readonly providers: readonly StandaloneCodingPlanProvider[];
+-  readonly offPeakProviders: readonly { family: ProviderFamilyDomain; providerId: string }[];
+-  readonly startPlanProviders: readonly { family: ProviderFamilyDomain; providerId: string }[];
+ }> {
+   if (config)
+     return {
+@@ -62,8 +53,6 @@
+           ? [{ family: access.accountType, modelId, providerId }]
+           : [];
+       }),
+-      offPeakProviders: readStandaloneOffPeakProviders(config.providers),
+-      startPlanProviders: readStandaloneStartPlanProviders(config.providers),
+     };
+   const filePath = env[ZCODE_BUILTIN_PROVIDER_CONFIG_FILE_ENV]?.trim();
+   if (!filePath) {
+@@ -81,34 +70,6 @@
+   }
  }
-+
-+/**
-+ * own（patch 0009）：CLI/TUI 登录会写 identity 键，但桌面端登录只写 oauth:* 键——
-+ * 没有 identity 键时独立 Registry 会判定“无权”（WSL 全新机器即此形态，/model 空）。
-+ * 这里在读取侧兜底：identity 键缺失时，从共享登录的 user_info 推导同一账号的
-+ * user_id 作为连接身份（桌面与 CLI 落盘的 user_info 均含 user_id）。
-+ * 只读推导，不向凭据文件写入任何键（桌面拥有的状态不由 CLI 侧改写）。
-+ */
-+function readStandaloneUserIdentity(input: {
-+  readonly family: ProviderFamilyDomain;
-+  readonly storedIdentity?: string | null;
-+  readonly userInfo?: string | null;
-+}): string | undefined {
-+  const stored = input.storedIdentity?.trim();
-+  if (stored) return stored;
-+  // own（patch 0009）：以下为“身份由共享 user_info 推导”路径。全程只读：
-+  // 上游 port 会在 auth-source 缺失时回写 "oauth"，回写触发凭据变更监听 →
-+  // Registry 刷新 → 在飞请求 scope_invalidated（并发 title 生成即触发）。
-+  // 见 headers port 的 derivedLogin 守卫。
-+  if (!input.userInfo) return undefined;
-+  try {
-+    const parsed = JSON.parse(input.userInfo) as { user_id?: unknown; id?: unknown };
-+    const derived =
-+      typeof parsed.user_id === "string" && parsed.user_id.trim()
-+        ? parsed.user_id.trim()
-+        : typeof parsed.id === "string" && parsed.id.trim()
-+          ? parsed.id.trim()
-+          : undefined;
-+    return derived;
-+  } catch {
-+    return undefined;
-+  }
-+}
-+
-+function sharedUserInfoCredentialKey(family: ProviderFamilyDomain): string {
-+  return family === "zai"
-+    ? SHARED_ZCODE_CREDENTIAL_KEYS.zaiUserInfo
-+    : SHARED_ZCODE_CREDENTIAL_KEYS.bigmodelUserInfo;
-+}
- function oauthCredentialKey(family: ProviderFamilyDomain): string {
-   return family === "zai"
-     ? SHARED_ZCODE_CREDENTIAL_KEYS.zaiAccessToken
-@@ -169,8 +208,16 @@
-     standaloneAccountIdentityCredentialKey(providerId),
+ 
+-/** own（patch 0007）：start-plan 权益按账号 balance 接口判定（桌面端同源语义），带 TTL 缓存。 */
+-function readStandaloneStartPlanProviders(
+-  providers: ProviderConfigLayerSnapshot["providers"],
+-): readonly { family: ProviderFamilyDomain; providerId: string }[] {
+-  return providers.entries().flatMap(([providerId, provider]) => {
+-    const access = provider.access;
+-    return access?.type === "zhipu-account" &&
+-      access.mode === "start-plan" &&
+-      access.accountType
+-      ? [{ family: access.accountType, providerId }]
+-      : [];
+-  });
+-}
+-
+-/** off-peak 属派生权益（与桌面端 isCodingPlanDerivedMode 同源）：同族 Coding Plan 有权即有权。 */
+-function readStandaloneOffPeakProviders(
+-  providers: ProviderConfigLayerSnapshot["providers"],
+-): readonly { family: ProviderFamilyDomain; providerId: string }[] {
+-  return providers.entries().flatMap(([providerId, provider]) => {
+-    const access = provider.access;
+-    return access?.type === "zhipu-account" &&
+-      access.mode === "off-peak" &&
+-      access.accountType
+-      ? [{ family: access.accountType, providerId }]
+-      : [];
+-  });
+-}
+-
+ export async function resolveStandaloneCodingPlanProvider(
+   family: ProviderFamilyDomain,
+   env: Readonly<Record<string, string | undefined>>,
+@@ -159,7 +120,7 @@
+ }
+ 
+ export async function readStandaloneAccountProviderConfigSnapshot(
+-  credentialStore: Pick<SharedZCodeCredentialStore, "load" | "loadMany">,
++  credentialStore: Pick<SharedZCodeCredentialStore, "loadMany">,
+   env: Readonly<Record<string, string | undefined>>,
+   config?: Pick<ProviderConfigLayerSnapshot, "revision" | "providers">,
+ ): Promise<AccountProviderConfigSnapshot> {
+@@ -217,50 +178,11 @@
+       ] as const;
+     }),
    );
-   const identities = await credentialStore.loadMany(identityKeys);
-+  // own（patch 0009）：补读共享 user_info——桌面登录没有 CLI identity 键时的身份来源。
-+  const userInfos = await credentialStore.loadMany(
-+    configuredProviders.map(({ family }) => sharedUserInfoCredentialKey(family)),
-+  );
-   const candidates = configuredProviders.flatMap(({ family, providerId }) => {
--    const accountIdentity = identities[standaloneAccountIdentityCredentialKey(providerId)]?.trim();
-+    const accountIdentity = readStandaloneUserIdentity({
-+      family,
-+      storedIdentity: identities[standaloneAccountIdentityCredentialKey(providerId)],
-+      userInfo: userInfos[sharedUserInfoCredentialKey(family)],
-+    });
-     if (!accountIdentity) return [];
-     const credentialKey = standaloneAccountProviderCredentialKey({
-       providerId,
-@@ -326,9 +373,18 @@
+-  // 派生 off-peak Provider：不持有独立凭据，entitled 跟随同族 Coding Plan（桌面端同语义）。
+-  const codingPlanEntitled = new Map(
+-    catalog.providers.map(({ family, providerId }) => {
+-      const access = providers.get(providerId)?.access;
+-      return [family, access?.type === "zhipu-account" ? access.entitled === true : false] as const;
+-    }),
+-  );
+-  const offPeakEntries = catalog.offPeakProviders.map(({ family, providerId }) => {
+-    const entitled = codingPlanEntitled.get(family) === true;
+-    return [
+-      providerId,
+-      new ProviderConfig({
+-        access: new ZhipuAccountAccessConfig({ entitled }),
+-      }),
+-    ] as const;
+-  });
+-  const entries = [...providers.entries(), ...offPeakEntries];
+-  // own（patch 0007）：start-plan Provider 按账号实际权益（billing/balance，Bearer zcodejwttoken）
+-  // 进入 Registry；模型白名单取 balance capabilities（桌面端权威来源）。接口拒绝时 fail-closed。
+-  // ZCODE_STANDALONE_STARTPLAN=1 显式开启。家族门控：balance 探测只支持 zai 账号（bigmodel 走独立
+-  // JWT 兑换，未实现），且必须有该族 OAuth 登录——绝不能把 bigmodel-start-plan 暴露成
+-  // entitled（zai 凭据打到 bigmodel 端点会被服务端风控拦截）。
+-  if (env.ZCODE_STANDALONE_STARTPLAN === "1" && catalog.startPlanProviders.length > 0) {
+-    const zaiToken = (
+-      await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zaiAccessToken)
+-    )?.trim();
+-    for (const { family, providerId } of catalog.startPlanProviders) {
+-      if (family !== "zai" || !zaiToken) continue;
+-      const state = await readStandaloneStartPlanState(env, credentialStore);
+-      entries.push([
+-        providerId,
+-        new ProviderConfig({
+-          access: new ZhipuAccountAccessConfig({ entitled: state.entitled }),
+-          ...(state.modelIds.length > 0 ? { builtinModelIds: state.modelIds } : {}),
+-        }),
+-      ] as const);
+-    }
+-  }
+-  const merged = new ProviderConfigMap(entries);
+-  return createAccountProviderConfigSnapshot(catalog.zcodeBuiltinRevision, merged);
++  return createAccountProviderConfigSnapshot(catalog.zcodeBuiltinRevision, providers);
+ }
+ 
+ export async function hasStandaloneCodingPlanAccess(
+-  credentialStore: Pick<SharedZCodeCredentialStore, "load" | "loadMany">,
++  credentialStore: Pick<SharedZCodeCredentialStore, "loadMany">,
+   env: Readonly<Record<string, string | undefined>>,
+ ): Promise<boolean> {
+   return (await readStandaloneAccountProviderConfigSnapshot(credentialStore, env)).providers
+@@ -312,17 +234,6 @@
+       input.abortSignal?.throwIfAborted();
+       const providerId = input.providerId.trim();
+       const access = input.accountAccess;
+-      // own（patch 0007）：start-plan 请求鉴权与桌面端同式——直接 Bearer zcodejwttoken，
+-      // 不经项目令牌解析（accountProviderRequestAuthService 的 start-plan 分支同语义）。
+-      if (access?.mode === "start-plan") {
+-        const jwt = (
+-          await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zcodeJwtToken)
+-        )?.trim();
+-        if (!jwt) {
+-          throw new Error(`Standalone Account Provider 缺少请求凭据 (start-plan): ${providerId}`);
+-        }
+-        return { headersApplied: true, requestAuth: { apiKey: jwt } };
+-      }
        if (!access || access.mode !== "individual-coding-plan") {
          throw new Error(`Standalone Account Provider 请求身份无效: ${providerId}`);
        }
--      const currentIdentity = (
--        await credentialStore.load(standaloneAccountIdentityCredentialKey(providerId))
--      )?.trim();
-+      const familyKey: ProviderFamilyDomain =
-+        access.accountType === "bigmodel" ? "bigmodel" : "zai";
-+      const storedIdentityValue = await credentialStore.load(
-+        standaloneAccountIdentityCredentialKey(providerId),
-+      );
-+      const currentIdentity = readStandaloneUserIdentity({
-+        family: familyKey,
-+        storedIdentity: storedIdentityValue,
-+        userInfo: await credentialStore.load(sharedUserInfoCredentialKey(familyKey)),
-+      });
-+      // own（patch 0009）：identity 键缺失 = 桌面登录推导路径 → 跳过 auth-source 回写。
-+      const derivedLogin = !storedIdentityValue?.trim();
-       if (!currentIdentity)
-         throw new Error(`Standalone Account Provider 凭据已经失效: ${providerId}`);
-       const family = access.accountType;
-@@ -355,10 +411,15 @@
-           (input.rejectedProjectTokenFingerprint && !input.expectedAccountScope)
-         )
-           throw new Error("project_token_scope_invalidated");
--        if (source !== "oauth") await credentialStore.save(sourceKey, "oauth");
-+        if (source !== "oauth" && !derivedLogin) await credentialStore.save(sourceKey, "oauth");
-         authSnapshots.set(oauthKey, oauth);
--        authSnapshots.set(standaloneAccountIdentityCredentialKey(providerId), currentIdentity);
--        authSnapshots.set(sourceKey, "oauth");
-+        // own（patch 0009）：推导路径下文件里没有 identity/auth-source 键——不能为它们
-+        // 建 snapshot，否则 invalidateChangedCredentials 每次都判定漂移 → resolver.clear
-+        // → generation 递增 → 每回合首个请求 scope_invalidated。
-+        if (!derivedLogin) {
-+          authSnapshots.set(standaloneAccountIdentityCredentialKey(providerId), currentIdentity);
-+          authSnapshots.set(sourceKey, "oauth");
-+        }
-         const material = await resolver.resolveMaterial(
-           {
-             family,
+@@ -414,127 +325,3 @@
+     },
+   };
+ }
+-
+-interface StandaloneStartPlanState {
+-  readonly entitled: boolean;
+-  readonly modelIds: readonly string[];
+-}
+-
+-const standaloneStartPlanCache = new Map<
+-  string,
+-  { expiresAt: number; state: StandaloneStartPlanState }
+->();
+-const STANDALONE_START_PLAN_TTL_MS = 5 * 60_000;
+-
+-async function readStandaloneStartPlanState(
+-  env: Readonly<Record<string, string | undefined>>,
+-  credentialStore: Pick<SharedZCodeCredentialStore, "load" | "loadMany">,
+-): Promise<StandaloneStartPlanState> {
+-  const empty: StandaloneStartPlanState = { entitled: false, modelIds: [] };
+-  const jwt = (await credentialStore.load(SHARED_ZCODE_CREDENTIAL_KEYS.zcodeJwtToken))?.trim();
+-  if (!jwt) return empty;
+-  const cacheKey = createHash("sha256").update(jwt).digest("hex");
+-  const cached = standaloneStartPlanCache.get(cacheKey);
+-  if (cached && cached.expiresAt > Date.now()) return cached.state;
+-  const state = await fetchStandaloneStartPlanState(env, jwt).catch(() => empty);
+-  standaloneStartPlanCache.set(cacheKey, {
+-    expiresAt: Date.now() + STANDALONE_START_PLAN_TTL_MS,
+-    state,
+-  });
+-  return state;
+-}
+-
+-async function fetchStandaloneStartPlanState(
+-  env: Readonly<Record<string, string | undefined>>,
+-  jwt: string,
+-): Promise<StandaloneStartPlanState> {
+-  const config = createConfig({ env }).config;
+-  const httpClient = createNodeHttpClientAdapter({
+-    env,
+-    proxyUrl: config.network.httpProxy,
+-    noProxy: config.network.noProxy,
+-    caCertFile: config.network.caCertFile,
+-    timeoutMs: config.network.timeout,
+-  });
+-  const appVersion =
+-    env.ZCODE_APP_VERSION?.trim() ||
+-    (typeof __OWN_PRODUCT_VERSION__ !== "undefined" ? __OWN_PRODUCT_VERSION__ : "0.17.1");
+-  // billing/balance 把 X-Device-Mid 当必填（与桌面 telemetry 管理的设备身份同源，只读复用）。
+-  const dataBaseDir = env.ZCODE_DATA_BASE_DIR?.trim() || homedir();
+-  let deviceMid: string | undefined;
+-  try {
+-    const raw = JSON.parse(
+-      await readFile(join(dataBaseDir, ".zcode/v2/telemetry-state.json"), "utf8"),
+-    ) as { deviceMid?: unknown };
+-    if (typeof raw.deviceMid === "string" && raw.deviceMid.trim()) {
+-      deviceMid = raw.deviceMid.trim();
+-    }
+-  } catch {
+-    // 无设备身份时按缺参处理（服务端 3001 → fail-closed）。
+-  }
+-  const url = `https://zcode.z.ai/api/v1/zcode-plan/billing/balance?app_version=${encodeURIComponent(appVersion)}`;
+-  const response = await httpClient.request(
+-    {
+-      url,
+-      method: "GET",
+-      headers: {
+-        Authorization: `Bearer ${jwt}`,
+-        ...(deviceMid ? { "X-Device-Mid": deviceMid } : {}),
+-      },
+-      maxResponseBytes: 128 * 1024,
+-      timeoutMs: 15_000,
+-    },
+-    {},
+-  );
+-  if (response.status < 200 || response.status >= 300) {
+-    return { entitled: false, modelIds: [] };
+-  }
+-  const payload = JSON.parse(new TextDecoder().decode(response.body)) as {
+-    code?: unknown;
+-    data?: {
+-      plans?: Array<{ plan_id?: string; name?: string; status?: string; ends_at?: number }>;
+-      balances?: Array<{ capabilities?: string[] }>;
+-    };
+-  };
+-  if (payload.code != null && ![0, 200, "0", "200"].includes(payload.code as number)) {
+-    return { entitled: false, modelIds: [] };
+-  }
+-  const nowSeconds = Date.now() / 1000;
+-  const isStartPlanIdentity = (value?: string): boolean => {
+-    const normalized = (value ?? "").trim().toLowerCase();
+-    return normalized.includes("start-plan") || normalized.includes("start plan");
+-  };
+-  const plans = (payload.data?.plans ?? []).map((plan) => {
+-    const status = plan.status?.trim().toLowerCase() ?? "";
+-    const endsAt = Number(plan.ends_at);
+-    return {
+-      planId: (plan.plan_id ?? "").trim().toLowerCase(),
+-      name: (plan.name ?? "").trim().toLowerCase(),
+-      status:
+-        Number.isFinite(endsAt) && endsAt > 0 && endsAt <= nowSeconds ? "expired" : status,
+-    };
+-  });
+-  const entitled = plans.some(
+-    (plan) =>
+-      plan.status === "active" &&
+-      (isStartPlanIdentity(plan.planId) || isStartPlanIdentity(plan.name)),
+-  );
+-  const modelIds: string[] = [];
+-  const seen = new Set<string>();
+-  for (const balance of payload.data?.balances ?? []) {
+-    for (const capability of balance.capabilities ?? []) {
+-      const normalized = capability.trim();
+-      if (!normalized.toLowerCase().startsWith("model:")) continue;
+-      // balance 返回小写 id（glm-5.3-flash）；Registry 按官方规范 ID 匹配，必须归一化。
+-      const modelId = normalizeOfficialGlmModelId(normalized.slice("model:".length).trim());
+-      const key = modelId.toLowerCase();
+-      if (modelId && !seen.has(key)) {
+-        seen.add(key);
+-        modelIds.push(modelId);
+-      }
+-    }
+-  }
+-  return { entitled, modelIds };
+-}
+-
+-/** own（patch 0007 headers）：start-plan 请求鉴权与桌面端同式——直接 Bearer zcodejwttoken。 */
